@@ -4,6 +4,8 @@
 Schema-based datastore module
 Caching implemented with AI
 
+The Pelagorine schema was left as an example
+
 --]]
 
 local datastores = {}
@@ -17,24 +19,47 @@ local cache = {} -- cache[datastoreName][key] = data
 local dirty = {} -- dirty[datastoreName][key] = true when cache has unsaved changes
 
 local schemas = {
-	players = {
+	players = {		-- keys are userid as number
 		position = {
-			inWorld = nil, -- encoded Vector2
-			inServer = nil -- encoded Vector3
+			inWorld = nil :: string, 	-- serialised Vector2
+			inIsland = nil :: string, 	-- serialised Vector3
+			rotation = nil :: number 	-- degrees, y rotation
 		},
 		config = {
 			graphics = {
 				noMaterials = false
 			}
-		}
+		},
+		faction = nil :: string		-- faction id
+	},
+	
+	islands = {		-- keys are serialised Vector2
+		worldGenVersion = "1", 		-- keep updated to latest worldgen version
+		owner = nil :: string, 		-- faction id
+	},
+	
+	factions = {	-- keys are UUIDs
+		owner = nil :: number, 					-- userid
+		members = {} :: {[number]: string}, 	-- k: userid,  v: role id
+		roles = {} :: Role
 	}
 }
 
-export type player = typeof(schemas.players)
+export type Player = typeof(schemas.players)
+export type Island = typeof(schemas.islands)
+export type Faction = typeof(schemas.factions)
+
+export type Role = {
+	[string]: {	-- role id
+		rank: number,
+		title: string,
+		permissions: {string}
+	}
+}
 
 --
 
-local function syncTableFromSchema(data, schema) -- this affects entry variables, be careful using it
+local function syncTableFromSchema(data: {any}, schema: {any}) -- this affects entry variables, be careful using it
 	local modified = false
 	
 	for k, v in pairs(schema) do
@@ -52,7 +77,7 @@ local function syncTableFromSchema(data, schema) -- this affects entry variables
 	return data, modified
 end
 
-local function replaceData(originalData, changes, increment:boolean?) -- this also affects entry variables, be careful using it
+local function replaceData(originalData: {any}, changes: {any}, increment: boolean?) -- this also affects entry variables, be careful using it
 	for k, v in pairs(changes) do
 		if typeof(v) == "table" then
 			if type(originalData[k]) ~= "table" then
@@ -80,7 +105,7 @@ end
 --	end
 --end
 
-function datastores:InitialiseSchema(datastoreName, key, relevantPlayers:{number}): boolean?
+function datastores:InitialiseSchema(datastoreName: string, key: any, relevantPlayers:{number}): boolean?
 	if schemas[datastoreName] then
 		local datastore = ds:GetDataStore(datastoreName)
 		
@@ -99,7 +124,7 @@ function datastores:InitialiseSchema(datastoreName, key, relevantPlayers:{number
 	end
 end
 
-function datastores:SaveData(datastoreName, key, changes:{}, relevantPlayers:{number}?): any? -- applies changes to cache and marks dirty; call FlushData to persist
+function datastores:SaveData(datastoreName: string, key: any, changes: {any}, relevantPlayers: {number}?): any? -- applies changes to cache and marks dirty; call FlushData to persist
 	if schemas[datastoreName] then
 		cache[datastoreName] = cache[datastoreName] or {}
 		dirty[datastoreName] = dirty[datastoreName] or {}
@@ -121,11 +146,11 @@ function datastores:SaveData(datastoreName, key, changes:{}, relevantPlayers:{nu
 	end
 end
 
-function datastores:UpdateData(datastoreName, key, modFunc: ({any}) -> ({any}), relevantPlayers:{number}?): any?
+function datastores:UpdateData(datastoreName: string, key: any, modFunc: ({any}) -> ({any}), relevantPlayers: {number}?): any?
 	datastores:SaveData(datastoreName, key, modFunc(datastores:GetData(datastoreName, key)), relevantPlayers)
 end
 
-function datastores:FlushData(datastoreName, key): boolean -- persists a single dirty entry to the datastore
+function datastores:FlushData(datastoreName: string, key: any): boolean -- persists a single dirty entry to the datastore
 	if not (dirty[datastoreName] and dirty[datastoreName][key]) then
 		return true
 	end
@@ -163,7 +188,7 @@ function datastores:FlushAll(): {string} -- flushes all dirty entries; returns l
 	return failed
 end
 
-function datastores:GetData(datastoreName, key): any?
+function datastores:GetData(datastoreName: string, key: any): any?
 	if schemas[datastoreName] then
 		if cache[datastoreName] and cache[datastoreName][key] then
 			return cache[datastoreName][key]
@@ -187,7 +212,7 @@ function datastores:GetData(datastoreName, key): any?
 	end
 end
 
-function datastores:InvalidateCache(datastoreName, key)
+function datastores:InvalidateCache(datastoreName: string, key: any)
 	if cache[datastoreName] then
 		if key then
 			cache[datastoreName][key] = nil
